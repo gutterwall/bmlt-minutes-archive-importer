@@ -2,12 +2,16 @@
 /**
  * Plugin Name: BMLT Minutes Archive Importer
  * Description: Companion importer for BMLT Minutes. Import historical minutes individually or in bulk by committee and meeting date.
- * Version: 1.2.0
+ * Plugin URI: https://github.com/gutterwall/bmlt-minutes-archive-importer
+ * Version: 1.3.0
  * Requires at least: 6.0
  * Requires PHP: 8.0
- * Author: BMLT Enabled Community
+ * Requires Plugins: bmlt-minutes
+ * Author: Richard Schellenberg
  * License: GPL-2.0-or-later
  * Text Domain: bmlt-minutes-archive-importer
+ *
+ * @version 1.3.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -15,15 +19,21 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 final class BMLT_Minutes_Archive_Importer {
-    private const VERSION = '1.2.0';
+    public const VERSION = '1.3.0';
     private const OPTION  = 'bmai_meta_mapping';
     private const BULK_RESULT_PREFIX = 'bmai_bulk_result_';
+    private const NOTICE_PREFIX = 'bmai_notice_';
+    private const FIRST_YEAR = 1950;
+    // The document types BMLT Minutes accepts (BMLT_Minutes::ALLOWED_EXTENSIONS).
+    private const DOC_EXTENSIONS = [ 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'txt', 'rtf', 'csv' ];
 
     public function __construct() {
         add_action( 'admin_menu', [ $this, 'admin_menu' ], 99 );
         add_action( 'admin_post_bmai_import', [ $this, 'handle_import' ] );
         add_action( 'admin_post_bmai_bulk_import', [ $this, 'handle_bulk_import' ] );
         add_action( 'admin_post_bmai_save_mapping', [ $this, 'save_mapping' ] );
+        // A request over post_max_size loses its "action" field too, so it arrives here rather than at our handlers.
+        add_action( 'admin_post', [ $this, 'handle_dropped_request' ] );
         add_action( 'admin_notices', [ $this, 'dependency_notice' ] );
     }
 
@@ -97,15 +107,15 @@ final class BMLT_Minutes_Archive_Importer {
     private function candidate_meta_keys( string $kind ): array {
         $sets = [
             'date' => [
-                '_bmlt_minutes_meeting_date', 'bmlt_minutes_meeting_date',
+                '_bmlt_minutes_date', '_bmlt_minutes_meeting_date', 'bmlt_minutes_meeting_date',
                 '_bmlt_meeting_date', 'bmlt_meeting_date', '_meeting_date', 'meeting_date',
             ],
             'file' => [
-                '_bmlt_minutes_file_id', 'bmlt_minutes_file_id', '_bmlt_file_id', 'bmlt_file_id',
+                '_bmlt_minutes_attachment_id', '_bmlt_minutes_file_id', 'bmlt_minutes_file_id', '_bmlt_file_id', 'bmlt_file_id',
                 '_minutes_file_id', 'minutes_file_id', '_document_id', 'document_id', '_file_id', 'file_id',
             ],
             'url' => [
-                '_bmlt_minutes_external_url', 'bmlt_minutes_external_url', '_bmlt_external_url', 'bmlt_external_url',
+                '_bmlt_minutes_url', '_bmlt_minutes_external_url', 'bmlt_minutes_external_url', '_bmlt_external_url', 'bmlt_external_url',
                 '_minutes_external_url', 'minutes_external_url', '_external_url', 'external_url', '_document_url', 'document_url',
             ],
         ];
@@ -159,12 +169,27 @@ final class BMLT_Minutes_Archive_Importer {
 
     private function resolve_mapping( string $post_type ): array {
         $saved = get_option( self::OPTION, [] );
+        $saved = is_array( $saved ) ? $saved : [];
         $discovered = $this->discover_meta_keys( $post_type );
         $result = [ 'date' => '', 'file' => '', 'url' => '' ];
+        // BMLT Minutes names its own keys; use them when it is the plugin providing the post type.
+        $known = [];
+        if ( class_exists( 'BMLT_Minutes' ) && defined( 'BMLT_Minutes::CPT' ) && BMLT_Minutes::CPT === $post_type ) {
+            $known = [
+                'date' => defined( 'BMLT_Minutes::META_DATE' ) ? (string) BMLT_Minutes::META_DATE : '',
+                'file' => defined( 'BMLT_Minutes::META_ATTACHMENT' ) ? (string) BMLT_Minutes::META_ATTACHMENT : '',
+                'url'  => defined( 'BMLT_Minutes::META_URL' ) ? (string) BMLT_Minutes::META_URL : '',
+            ];
+        }
 
         foreach ( array_keys( $result ) as $kind ) {
-            if ( ! empty( $saved[ $kind ] ) ) {
-                $result[ $kind ] = sanitize_key( $saved[ $kind ] );
+            $saved_key = self::clean_meta_key( (string) ( $saved[ $kind ] ?? '' ) );
+            if ( '' !== $saved_key ) {
+                $result[ $kind ] = $saved_key;
+                continue;
+            }
+            if ( ! empty( $known[ $kind ] ) ) {
+                $result[ $kind ] = $known[ $kind ];
                 continue;
             }
             $best = '';
@@ -186,10 +211,19 @@ final class BMLT_Minutes_Archive_Importer {
         return $result;
     }
 
+    /**
+     * A meta key as typed on the mapping form: letters, digits, underscore and hyphen (letter case kept).
+     */
+    private static function clean_meta_key( string $value ): string {
+        return (string) preg_replace( '/[^A-Za-z0-9_\-]/', '', trim( $value ) );
+    }
+
     public function render_page(): void {
         $post_type = $this->detect_post_type();
         if ( ! $post_type ) {
-            echo '<div class="wrap"><h1>Import Minutes Archive</h1><div class="notice notice-error"><p>BMLT Minutes must be active before this importer can be used.</p></div></div>';
+            echo '<div class="wrap"><h1>Import Minutes Archive</h1>';
+            $this->render_result_notice();
+            echo '<div class="notice notice-error"><p>BMLT Minutes must be active before this importer can be used.</p></div></div>';
             return;
         }
         if ( ! current_user_can( $this->edit_capability( $post_type ) ) ) {
@@ -203,7 +237,7 @@ final class BMLT_Minutes_Archive_Importer {
         $year = (int) current_time( 'Y' );
         $month = (int) current_time( 'n' );
         $day = (int) current_time( 'j' );
-        $tab = isset( $_GET['tab'] ) && 'bulk' === sanitize_key( wp_unslash( $_GET['tab'] ) ) ? 'bulk' : 'single';
+        $tab = isset( $_GET['tab'] ) && 'bulk' === sanitize_key( wp_unslash( $_GET['tab'] ) ) ? 'bulk' : 'single'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Chooses the tab to display; nothing is changed.
 
         echo '<div class="wrap"><h1>Import Minutes Archive</h1>';
         $this->render_result_notice();
@@ -254,7 +288,7 @@ final class BMLT_Minutes_Archive_Importer {
         echo '<tr><th scope="row"><label for="bmai_committee">Committee</label></th><td><select name="committee" id="bmai_committee" required><option value="">— Select Committee —</option>';
         $this->render_term_options( $terms, $taxonomy );
         echo '</select><p class="description">Uses the committees already configured in BMLT Minutes.</p></td></tr>';
-        echo '<tr><th scope="row">Meeting date</th><td>' . $this->date_selects_html( '', $year, $month, $day ) . '</td></tr>';
+        echo '<tr><th scope="row">Meeting date</th><td>' . $this->date_selects_html( '', $year, $month, $day ) . '</td></tr>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- date_selects_html() escapes every value it builds.
         echo '<tr><th scope="row"><label for="bmai_file">Archive document</label></th><td><input type="file" name="archive_file" id="bmai_file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.txt,.rtf,.csv"><p class="description">Upload the old minutes file. It will be added to the WordPress Media Library.</p></td></tr>';
         echo '<tr><th scope="row"><label for="bmai_url">External link</label></th><td><input type="url" class="regular-text" name="external_url" id="bmai_url" placeholder="https://"><p class="description">Optional alternative to a file upload, for Google Docs, Dropbox, OneDrive, etc.</p></td></tr>';
         echo '<tr><th scope="row"><label for="bmai_title">Title</label></th><td><input type="text" class="regular-text" name="title" id="bmai_title" placeholder="Leave blank to generate automatically"><p class="description">Default: Committee Name — Month Day, Year</p></td></tr>';
@@ -272,13 +306,13 @@ final class BMLT_Minutes_Archive_Importer {
         wp_nonce_field( 'bmai_bulk_import', 'bmai_bulk_nonce' );
         echo '<input type="hidden" name="action" value="bmai_bulk_import">';
         echo '<p><label for="bmai_bulk_files"><strong>Archive documents</strong></label><br><input type="file" id="bmai_bulk_files" name="archive_files[]" multiple required accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.txt,.rtf,.csv"></p>';
-        echo '<p class="description">Your server currently permits up to <strong>' . esc_html( $max_files ) . '</strong> uploaded files per request. After choosing files, the review table will appear below.</p>';
+        echo '<p class="description">Your server currently permits up to <strong>' . esc_html( (string) $max_files ) . '</strong> uploaded files per request. After choosing files, the review table will appear below.</p>';
         echo '<div id="bmai-bulk-tools" style="display:none;margin:18px 0;padding:12px;background:#f6f7f7;border:1px solid #dcdcde">';
         echo '<strong>Apply to all rows:</strong> ';
         echo '<select id="bmai-apply-committee"><option value="">— Committee —</option>';
         $this->render_term_options( $terms, $taxonomy );
         echo '</select> ';
-        echo $this->date_selects_html( 'apply_', $year, $month, $day, false );
+        echo $this->date_selects_html( 'apply_', $year, $month, $day, false ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- date_selects_html() escapes every value it builds.
         echo ' <button type="button" class="button" id="bmai-apply-all">Apply committee &amp; date</button>';
         echo '</div>';
         echo '<div id="bmai-bulk-empty" style="padding:18px;border:1px dashed #c3c4c7;color:#646970">Choose two or more files to build the bulk import table.</div>';
@@ -357,7 +391,7 @@ final class BMLT_Minutes_Archive_Importer {
     private function month_options_html( int $selected ): string {
         $html = '';
         for ( $m = 1; $m <= 12; $m++ ) {
-            $html .= '<option value="' . esc_attr( $m ) . '" ' . selected( $m, $selected, false ) . '>' . esc_html( date_i18n( 'F', mktime( 0, 0, 0, $m, 1 ) ) ) . '</option>';
+            $html .= '<option value="' . esc_attr( (string) $m ) . '" ' . selected( $m, $selected, false ) . '>' . esc_html( date_i18n( 'F', mktime( 0, 0, 0, $m, 1 ) ) ) . '</option>';
         }
         return $html;
     }
@@ -365,7 +399,7 @@ final class BMLT_Minutes_Archive_Importer {
     private function number_options_html( int $start, int $end, int $selected ): string {
         $html = '';
         for ( $n = $start; $n <= $end; $n++ ) {
-            $html .= '<option value="' . esc_attr( $n ) . '" ' . selected( $n, $selected, false ) . '>' . esc_html( $n ) . '</option>';
+            $html .= '<option value="' . esc_attr( (string) $n ) . '" ' . selected( $n, $selected, false ) . '>' . esc_html( (string) $n ) . '</option>';
         }
         return $html;
     }
@@ -373,8 +407,8 @@ final class BMLT_Minutes_Archive_Importer {
     private function year_options_html( int $selected ): string {
         $current = (int) current_time( 'Y' );
         $html = '';
-        for ( $y = $current; $y >= 1950; $y-- ) {
-            $html .= '<option value="' . esc_attr( $y ) . '" ' . selected( $y, $selected, false ) . '>' . esc_html( $y ) . '</option>';
+        for ( $y = $current; $y >= self::FIRST_YEAR; $y-- ) {
+            $html .= '<option value="' . esc_attr( (string) $y ) . '" ' . selected( $y, $selected, false ) . '>' . esc_html( (string) $y ) . '</option>';
         }
         return $html;
     }
@@ -400,14 +434,19 @@ final class BMLT_Minutes_Archive_Importer {
     }
 
     private function render_result_notice(): void {
-        if ( ! empty( $_GET['bmai_result'] ) ) {
-            $result = sanitize_key( wp_unslash( $_GET['bmai_result'] ) );
-            $message = isset( $_GET['bmai_message'] ) ? sanitize_text_field( wp_unslash( $_GET['bmai_message'] ) ) : '';
-            $class = 'success' === $result ? 'notice-success' : ( 'warning' === $result ? 'notice-warning' : 'notice-error' );
-            echo '<div class="notice ' . esc_attr( $class ) . ' is-dismissible"><p>' . esc_html( $message ) . '</p></div>';
+        // The message is kept server-side for the user who caused it, so a link cannot put words on this page.
+        if ( ! empty( $_GET['bmai_result'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Display flag only; the notice itself is stored server-side for this user.
+            $key = self::NOTICE_PREFIX . get_current_user_id();
+            $notice = get_transient( $key );
+            delete_transient( $key );
+            if ( is_array( $notice ) && isset( $notice['result'], $notice['message'] ) ) {
+                $result = (string) $notice['result'];
+                $class = 'success' === $result ? 'notice-success' : ( 'warning' === $result ? 'notice-warning' : 'notice-error' );
+                echo '<div class="notice ' . esc_attr( $class ) . ' is-dismissible"><p>' . esc_html( (string) $notice['message'] ) . '</p></div>';
+            }
         }
 
-        if ( isset( $_GET['bmai_bulk_result'] ) ) {
+        if ( isset( $_GET['bmai_bulk_result'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Display flag only; the report is stored server-side for this user.
             $key = self::BULK_RESULT_PREFIX . get_current_user_id();
             $report = get_transient( $key );
             delete_transient( $key );
@@ -430,17 +469,37 @@ final class BMLT_Minutes_Archive_Importer {
     public function save_mapping(): void {
         if ( ! current_user_can( 'manage_options' ) ) wp_die( 'Not allowed.' );
         check_admin_referer( 'bmai_save_mapping', 'bmai_mapping_nonce' );
-        $mapping = isset( $_POST['mapping'] ) && is_array( $_POST['mapping'] ) ? wp_unslash( $_POST['mapping'] ) : [];
+        $mapping = isset( $_POST['mapping'] ) && is_array( $_POST['mapping'] ) ? wp_unslash( $_POST['mapping'] ) : []; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Each value goes through clean_meta_key() below.
         $clean = [];
         foreach ( [ 'date', 'file', 'url' ] as $kind ) {
-            $value = isset( $mapping[ $kind ] ) ? trim( (string) $mapping[ $kind ] ) : '';
-            $clean[ $kind ] = preg_replace( '/[^A-Za-z0-9_\-]/', '', $value );
+            $clean[ $kind ] = isset( $mapping[ $kind ] ) && is_scalar( $mapping[ $kind ] ) ? self::clean_meta_key( (string) $mapping[ $kind ] ) : '';
         }
         update_option( self::OPTION, $clean, false );
         $this->redirect_result( 'success', 'Compatibility mapping saved.' );
     }
 
+    /**
+     * A request bigger than post_max_size arrives with empty $_POST and $_FILES (and so without its nonce).
+     */
+    private function reject_oversized_request(): void {
+        $length = isset( $_SERVER['CONTENT_LENGTH'] ) ? (int) $_SERVER['CONTENT_LENGTH'] : 0;
+        if ( empty( $_POST ) && empty( $_FILES ) && $length > 0 && is_user_logged_in() ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Only checks that the body was dropped (too large), before the nonce can be read; nothing is changed.
+            $this->redirect_result( 'error', sprintf( 'The upload (%s) was larger than this server accepts in one request (post_max_size %s). Import fewer or smaller files at a time.', size_format( $length ), (string) ini_get( 'post_max_size' ) ) );
+        }
+    }
+
+    /**
+     * admin-post.php without an action: if it was our form, explain why nothing was received.
+     */
+    public function handle_dropped_request(): void {
+        $referer = isset( $_SERVER['HTTP_REFERER'] ) ? (string) wp_unslash( $_SERVER['HTTP_REFERER'] ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Only compared with our page name.
+        if ( str_contains( $referer, 'page=bmlt-minutes-archive-importer' ) ) {
+            $this->reject_oversized_request();
+        }
+    }
+
     public function handle_import(): void {
+        $this->reject_oversized_request();
         check_admin_referer( 'bmai_import', 'bmai_nonce' );
         $context = $this->import_context_or_die();
         $committee_id = isset( $_POST['committee'] ) ? absint( $_POST['committee'] ) : 0;
@@ -451,7 +510,7 @@ final class BMLT_Minutes_Archive_Importer {
         $external_url = isset( $_POST['external_url'] ) ? esc_url_raw( wp_unslash( $_POST['external_url'] ) ) : '';
         $allow_duplicate = ! empty( $_POST['allow_duplicate'] );
         $custom_title = isset( $_POST['title'] ) ? sanitize_text_field( wp_unslash( $_POST['title'] ) ) : '';
-        $has_file = isset( $_FILES['archive_file'] ) && UPLOAD_ERR_NO_FILE !== (int) $_FILES['archive_file']['error'];
+        $has_file = isset( $_FILES['archive_file']['error'] ) && is_scalar( $_FILES['archive_file']['error'] ) && UPLOAD_ERR_NO_FILE !== (int) $_FILES['archive_file']['error'];
 
         if ( ! $has_file && empty( $external_url ) ) $this->redirect_result( 'error', 'Choose an archive document or enter an external link.' );
         if ( $has_file && ! empty( $external_url ) ) $this->redirect_result( 'error', 'Use either an uploaded document or an external link, not both.' );
@@ -462,7 +521,7 @@ final class BMLT_Minutes_Archive_Importer {
             'status' => $status,
             'title' => $custom_title,
             'external_url' => $external_url,
-            'file' => $has_file ? $_FILES['archive_file'] : null,
+            'file' => $has_file ? $_FILES['archive_file'] : null, // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- The upload goes to media_handle_upload(), which validates it.
             'allow_duplicate' => $allow_duplicate,
         ] );
 
@@ -470,14 +529,18 @@ final class BMLT_Minutes_Archive_Importer {
             $code = $result->get_error_code();
             $this->redirect_result( 'duplicate' === $code ? 'warning' : 'error', $result->get_error_message() );
         }
+        if ( 'publish' === $status && 'publish' !== get_post_status( $result ) ) {
+            $this->redirect_result( 'warning', 'Minutes imported as a draft: your account may not publish minutes.' );
+        }
         $this->redirect_result( 'success', 'Minutes imported successfully. You can edit the imported record from the Minutes screen.' );
     }
 
     public function handle_bulk_import(): void {
+        $this->reject_oversized_request();
         check_admin_referer( 'bmai_bulk_import', 'bmai_bulk_nonce' );
         $context = $this->import_context_or_die();
-        $rows = isset( $_POST['rows'] ) && is_array( $_POST['rows'] ) ? wp_unslash( $_POST['rows'] ) : [];
-        $files = $this->normalize_uploaded_files( $_FILES['archive_files'] ?? [] );
+        $rows = isset( $_POST['rows'] ) && is_array( $_POST['rows'] ) ? wp_unslash( $_POST['rows'] ) : []; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Each field is sanitized where used (absint, sanitize_text_field, sanitize_file_name).
+        $files = $this->normalize_uploaded_files( $_FILES['archive_files'] ?? [] ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Uploads go to media_handle_upload(), which validates them.
         $status = isset( $_POST['post_status'] ) && 'draft' === $_POST['post_status'] ? 'draft' : 'publish';
         $allow_duplicate = ! empty( $_POST['allow_duplicate'] );
         $report = [ 'success' => 0, 'failed' => 0, 'skipped' => 0, 'messages' => [] ];
@@ -485,6 +548,14 @@ final class BMLT_Minutes_Archive_Importer {
         if ( empty( $files ) ) {
             $report['failed']++;
             $report['messages'][] = 'No archive files were received. Your server upload limits may have been exceeded.';
+        }
+        // PHP drops files beyond max_file_uploads without an error: report every included row that has no file.
+        foreach ( $rows as $i => $row ) {
+            if ( is_array( $row ) && ! empty( $row['include'] ) && ! isset( $files[ $i ] ) && ! empty( $files ) ) {
+                $report['failed']++;
+                $name = sanitize_file_name( (string) ( is_scalar( $row['filename'] ?? null ) ? $row['filename'] : 'File ' . ( (int) $i + 1 ) ) );
+                $report['messages'][] = $name . ': not received by the server (it accepts ' . (int) ini_get( 'max_file_uploads' ) . ' files per request).';
+            }
         }
 
         foreach ( $files as $i => $file ) {
@@ -507,7 +578,7 @@ final class BMLT_Minutes_Archive_Importer {
                 'month' => absint( $row['month'] ?? 0 ),
                 'year' => absint( $row['year'] ?? 0 ),
                 'status' => $status,
-                'title' => sanitize_text_field( $row['title'] ?? '' ),
+                'title' => is_scalar( $row['title'] ?? '' ) ? sanitize_text_field( (string) ( $row['title'] ?? '' ) ) : '',
                 'external_url' => '',
                 'file' => $file,
                 'source_filename' => $filename,
@@ -520,7 +591,7 @@ final class BMLT_Minutes_Archive_Importer {
                 $report['messages'][] = $filename . ': ' . $result->get_error_message();
             } else {
                 $report['success']++;
-                $report['messages'][] = $filename . ': imported successfully.';
+                $report['messages'][] = $filename . ( 'publish' === $status && 'publish' !== get_post_status( $result ) ? ': imported as a draft (your account may not publish minutes).' : ': imported successfully.' );
             }
         }
 
@@ -540,13 +611,20 @@ final class BMLT_Minutes_Archive_Importer {
         if ( ! current_user_can( $this->edit_capability( $post_type ) ) ) wp_die( 'Not allowed.' );
         $taxonomy = $this->detect_taxonomy( $post_type );
         if ( ! $taxonomy ) $this->redirect_result( 'error', 'Could not detect the BMLT Minutes Committee taxonomy.' );
+        $obj = get_post_type_object( $post_type );
+        $publish_cap = ( $obj && isset( $obj->cap->publish_posts ) ) ? $obj->cap->publish_posts : 'publish_posts';
         return [
             'post_type' => $post_type,
             'taxonomy' => $taxonomy,
             'mapping' => $this->resolve_mapping( $post_type ),
+            'can_publish' => current_user_can( $publish_cap ),
+            'can_upload' => current_user_can( 'upload_files' ),
         ];
     }
 
+    /**
+     * @return int|WP_Error The minutes post ID.
+     */
     private function import_item( array $context, array $item ) {
         $post_type = $context['post_type'];
         $taxonomy = $context['taxonomy'];
@@ -557,8 +635,18 @@ final class BMLT_Minutes_Archive_Importer {
         $year = absint( $item['year'] ?? 0 );
 
         if ( ! $committee_id || ! term_exists( $committee_id, $taxonomy ) ) return new WP_Error( 'invalid_committee', 'Please select a valid committee.' );
-        if ( ! checkdate( $month, $day, $year ) ) return new WP_Error( 'invalid_date', 'Please select a valid meeting date.' );
+        // A user BMLT Minutes limits to some committees may import only into those.
+        if ( class_exists( 'BMLT_Minutes' ) && is_callable( [ 'BMLT_Minutes', 'committee_scope' ] ) ) { // Older BMLT Minutes versions have no committee scopes.
+            $scope = BMLT_Minutes::committee_scope( get_current_user_id() );
+            if ( null !== $scope && ! in_array( $committee_id, array_map( 'intval', $scope ), true ) ) {
+                return new WP_Error( 'committee_scope', 'You can only import minutes for your own committees.' );
+            }
+        }
+        if ( $year < self::FIRST_YEAR || $year > (int) current_time( 'Y' ) || ! checkdate( $month, $day, $year ) ) return new WP_Error( 'invalid_date', 'Please select a valid meeting date.' );
         $date = sprintf( '%04d-%02d-%02d', $year, $month, $day );
+        if ( is_array( $item['file'] ?? null ) && empty( $context['can_upload'] ) ) {
+            return new WP_Error( 'upload_cap', 'Your account may not upload files. Use an external link instead.' );
+        }
 
         if ( empty( $item['allow_duplicate'] ) && $this->duplicate_exists( $post_type, $taxonomy, $committee_id, $date, $mapping['date'] ) ) {
             return new WP_Error( 'duplicate', 'Minutes already exist for that committee and meeting date.' );
@@ -578,13 +666,23 @@ final class BMLT_Minutes_Archive_Importer {
             $title = sprintf( '%s — %s', $term->name, date_i18n( 'F j, Y', strtotime( $date . ' 12:00:00' ) ) );
         }
         $status = ( isset( $item['status'] ) && 'draft' === $item['status'] ) ? 'draft' : 'publish';
+        if ( 'publish' === $status && array_key_exists( 'can_publish', $context ) && ! $context['can_publish'] ) {
+            $status = 'draft';
+        }
+        // Noon on the meeting day, unless that is still ahead (today before noon): a post dated in the future
+        // would be scheduled instead of published.
+        $post_date = $date . ' 12:00:00';
+        $now = current_time( 'mysql' );
+        if ( $post_date > $now ) {
+            $post_date = $now;
+        }
 
         $post_id = wp_insert_post( [
             'post_type'   => $post_type,
             'post_title'  => $title,
             'post_status' => $status,
             'post_author' => get_current_user_id(),
-            'post_date'   => $date . ' 12:00:00',
+            'post_date'   => $post_date,
         ], true );
         if ( is_wp_error( $post_id ) ) return new WP_Error( 'insert', 'Could not create minutes record: ' . $post_id->get_error_message() );
 
@@ -592,6 +690,11 @@ final class BMLT_Minutes_Archive_Importer {
         if ( is_wp_error( $assigned ) ) {
             wp_delete_post( $post_id, true );
             return new WP_Error( 'term_assign', 'Could not assign the committee: ' . $assigned->get_error_message() );
+        }
+        if ( ! has_term( $committee_id, $taxonomy, $post_id ) ) {
+            // Another plugin removed it (BMLT Minutes does for committees outside the user's scope).
+            wp_delete_post( $post_id, true );
+            return new WP_Error( 'term_assign', 'The committee could not be assigned to the imported minutes.' );
         }
 
         update_post_meta( $post_id, $mapping['date'], $date );
@@ -632,15 +735,45 @@ final class BMLT_Minutes_Archive_Importer {
         return $query->have_posts();
     }
 
+    /**
+     * @return int|WP_Error The attachment ID.
+     */
     private function upload_specific_file( int $post_id, array $file ) {
         if ( ! function_exists( 'media_handle_upload' ) ) {
             require_once ABSPATH . 'wp-admin/includes/file.php';
             require_once ABSPATH . 'wp-admin/includes/media.php';
             require_once ABSPATH . 'wp-admin/includes/image.php';
         }
+        // Only the document types BMLT Minutes accepts, whatever the browser's file picker allowed.
+        $mimes = [];
+        foreach ( get_allowed_mime_types() as $exts => $mime ) {
+            $allowed = array_intersect( explode( '|', $exts ), self::DOC_EXTENSIONS );
+            if ( $allowed ) {
+                $mimes[ implode( '|', $allowed ) ] = $mime;
+            }
+        }
+        /**
+         * Overrides passed to media_handle_upload() for archive documents.
+         *
+         * @param array $overrides wp_handle_upload() overrides.
+         * @param array $file      The uploaded file.
+         */
+        $overrides = apply_filters( 'bmai_upload_overrides', [ 'test_form' => false, 'mimes' => $mimes ], $file );
+        /**
+         * Short-circuits the upload: return an attachment ID or a WP_Error to use instead of media_handle_upload().
+         *
+         * @param int|WP_Error|null $result    null to upload as usual.
+         * @param array             $file      The uploaded file.
+         * @param int               $post_id   The minutes record the document belongs to.
+         * @param array             $overrides wp_handle_upload() overrides.
+         */
+        $pre = apply_filters( 'bmai_pre_upload', null, $file, $post_id, $overrides );
+        if ( null !== $pre ) {
+            return $pre;
+        }
         $key = 'bmai_archive_upload_' . wp_generate_password( 8, false, false );
         $_FILES[ $key ] = $file;
-        $result = media_handle_upload( $key, $post_id, [], [ 'test_form' => false ] );
+        $result = media_handle_upload( $key, $post_id, [], $overrides );
         unset( $_FILES[ $key ] );
         return $result;
     }
@@ -674,10 +807,10 @@ final class BMLT_Minutes_Archive_Importer {
     }
 
     private function redirect_result( string $result, string $message ): void {
+        set_transient( self::NOTICE_PREFIX . get_current_user_id(), [ 'result' => $result, 'message' => $message ], 5 * MINUTE_IN_SECONDS );
         $url = add_query_arg( [
-            'page'         => 'bmlt-minutes-archive-importer',
-            'bmai_result'  => $result,
-            'bmai_message' => $message,
+            'page'        => 'bmlt-minutes-archive-importer',
+            'bmai_result' => 1,
         ], $this->admin_page_url() );
         wp_safe_redirect( $url );
         exit;

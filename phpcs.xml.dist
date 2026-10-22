@@ -1,0 +1,48 @@
+<?xml version="1.0"?>
+<ruleset name="BMLT Minutes Archive Importer">
+	<description>Correctness and security rules: WordPress escaping, nonce, input, SQL and i18n rules for the plugin;
+	PHP 8.0+ compatibility everywhere. (Formatting is not enforced.)</description>
+
+	<file>bmlt-minutes-archive-importer</file>
+	<exclude-pattern>*/vendor/*</exclude-pattern>
+	<arg name="extensions" value="php"/>
+	<arg name="colors"/>
+	<arg value="sp"/>
+
+	<config name="testVersion" value="8.0-"/>
+	<config name="minimum_wp_version" value="6.0"/>
+
+	<rule ref="Generic.PHP.Syntax"/>
+	<rule ref="PHPCompatibilityWP"/>
+
+	<rule ref="WordPress.Security">
+		<exclude-pattern>fake-bmlt/*</exclude-pattern>
+	</rule>
+	<rule ref="WordPress.DB.PreparedSQL"/>
+	<rule ref="WordPress.DB.PreparedSQLPlaceholders"/>
+	<rule ref="WordPress.WP.I18n">
+		<exclude-pattern>fake-bmlt/*</exclude-pattern>
+		<properties>
+			<property name="text_domain" type="array"><element value="bmlt-minutes-archive-importer"/></property>
+		</properties>
+	</rule>
+	<rule ref="WordPress.PHP.DevelopmentFunctions">
+		<exclude-pattern>fake-bmlt/*</exclude-pattern>
+	</rule>
+	<rule ref="WordPress.PHP.DiscouragedPHPFunctions">
+		<exclude-pattern>fake-bmlt/*</exclude-pattern>
+	</rule>
+	<rule ref="WordPress.PHP.RestrictedPHPFunctions"/>
+	<rule ref="WordPress.WP.AlternativeFunctions">
+		<exclude-pattern>fake-bmlt/*</exclude-pattern>
+	</rule>
+	<rule ref="WordPress.WP.GlobalVariablesOverride"/>
+	<rule ref="WordPress.NamingConventions.PrefixAllGlobals">
+		<exclude-pattern>fake-bmlt/*</exclude-pattern>
+		<properties>
+			<property name="prefixes" type="array"><element value="bmai"/><element value="BMLT_Minutes_Archive_Importer"/></property>
+		</properties>
+	</rule>
+	<rule ref="Squiz.PHP.Eval"/>
+	<rule ref="Generic.PHP.BacktickOperator"/>
+</ruleset>

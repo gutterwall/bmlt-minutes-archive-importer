@@ -1,0 +1,10 @@
+parameters:
+    level: 6
+    phpVersion: 80000
+    paths:
+        - bmlt-minutes-archive-importer
+    scanFiles:
+        - tests/dependencies/bmlt-minutes/minutes.php
+    treatPhpDocTypesAsCertain: false
+    ignoreErrors:
+        - identifier: missingType.iterableValue

@@ -1,10 +1,13 @@
 === BMLT Minutes Archive Importer ===
-Contributors: bmltenabled
+Contributors: gutterwall
 Tags: bmlt, minutes, archive, importer, documents, bulk import
 Requires at least: 6.0
+Tested up to: 7.1
 Requires PHP: 8.0
-Stable tag: 1.2.0
+Requires Plugins: bmlt-minutes
+Stable tag: 1.3.0
 License: GPLv2 or later
+License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
 Companion importer for the BMLT Minutes WordPress plugin.
 
@@ -52,6 +55,17 @@ Features:
 
 The maximum number of files that can be selected in one HTTP request depends on the server's PHP `max_file_uploads` setting. The Bulk Import screen displays the current limit.
 
+== Permissions ==
+
+The importer follows BMLT Minutes' own permissions:
+
+* Anyone who may edit minutes (administrators, editors, Minutes Managers) can open Archive Import.
+* A user limited to some committees on their profile can import only into those committees (and their sub-committees).
+* A user who may edit but not publish minutes gets drafts.
+* Uploading documents needs the "upload_files" capability; without it only external links can be imported.
+* Only the document types BMLT Minutes accepts are stored (PDF, Word, Excel, PowerPoint, OpenDocument, TXT, RTF, CSV),
+  checked on the server whatever the browser allowed, within BMLT Minutes' upload size limit.
+
 == Notes ==
 
 This plugin does not create a second minutes archive. It imports records into BMLT Minutes.
@@ -59,6 +73,25 @@ This plugin does not create a second minutes archive. It imports records into BM
 If your BMLT Minutes installation uses nonstandard meta keys, open Compatibility / advanced mapping on the Archive Import screen and select the appropriate meeting-date, file-ID, and external-URL meta keys.
 
 == Changelog ==
+
+= 1.3.0 =
+* Fixed: minutes for a date later than now (today's meeting imported in the morning, or later this year) were scheduled
+  instead of published.
+* Fixed: a Minutes Manager limited to some committees could import into any committee; the record was published
+  without a committee and the import reported success.
+* Fixed: users who may edit but not publish minutes could publish through the importer; they now get drafts.
+* Fixed: users without upload permission could add files to the Media Library through the importer.
+* Fixed: any file type WordPress allows (images, audio, video) could be uploaded; only minutes document types are
+  accepted now.
+* Fixed: in a bulk import, files beyond the server's max_file_uploads limit were silently dropped; they are now
+  listed as failed.
+* Fixed: an upload larger than post_max_size ended on "The link you followed has expired"; it now explains the limit.
+* Fixed: result messages were read from the page address, so a link could show any text on the Archive Import page.
+* Fixed: a mapping key with capital letters was saved but written in lower case.
+* Fixed: when BMLT Minutes was inactive, the reason an import failed was not shown.
+* Uses BMLT Minutes' own meta keys directly; the fallback keys now match BMLT Minutes.
+* Uninstall removes the importer's settings (imported minutes and documents are kept).
+* New filters: bmai_upload_overrides, bmai_pre_upload.
 
 = 1.2.0 =
 * Bulk imports now default post titles to YYYY-MM-DD-CommitteeName-Filename.

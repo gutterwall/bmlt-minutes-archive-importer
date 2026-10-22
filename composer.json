@@ -1,0 +1,34 @@
+{
+    "name": "gutterwall/bmlt-minutes-archive-importer",
+    "description": "BMLT Minutes Archive Importer: single and bulk import of historical minutes into BMLT Minutes, with WordPress integration and browser tests.",
+    "type": "project",
+    "license": "GPL-2.0-or-later",
+    "require": {
+        "php": ">=8.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.6",
+        "yoast/phpunit-polyfills": "^2.0",
+        "wp-coding-standards/wpcs": "^3.1",
+        "phpcompatibility/phpcompatibility-wp": "^2.1",
+        "dealerdirect/phpcodesniffer-composer-installer": "^1.0",
+        "phpstan/phpstan": "^2.1",
+        "szepeviktor/phpstan-wordpress": "^2.0",
+        "phpstan/extension-installer": "^1.4"
+    },
+    "scripts": {
+        "test": "phpunit -c tests/wordpress/phpunit.xml.dist",
+        "lint": "phpcs",
+        "analyse": "phpstan analyse --memory-limit=2G"
+    },
+    "config": {
+        "sort-packages": true,
+        "platform": {
+            "php": "8.0.30"
+        },
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true,
+            "phpstan/extension-installer": true
+        }
+    }
+}
