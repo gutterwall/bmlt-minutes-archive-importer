@@ -49,7 +49,7 @@ covered by the end-to-end test. `BMAI_PLUGIN_FILE=<path>` runs the integration t
 plugin, and `PLUGIN_ZIP=<zip>` the end-to-end test (for example 1.2.0, to see what they catch).
 
 CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs all of them on every push: WordPress 6.0 on PHP 8.0,
-the latest WordPress on PHP 8.1 to 8.4, single site and multisite, MySQL 5.7 and 8.0, MariaDB 10.6 and 11.4.
+the latest WordPress on PHP 8.1 to 8.5, single site and multisite, MySQL 5.7 and 8.0, MariaDB 10.6, 11.4 and 11.8.
 
 ## Releasing
 
