@@ -3,7 +3,7 @@
  * Plugin Name: BMLT Minutes Archive Importer
  * Description: Companion importer for BMLT Minutes. Import historical minutes individually or in bulk by committee and meeting date.
  * Plugin URI: https://github.com/gutterwall/bmlt-minutes-archive-importer
- * Version: 1.3.0
+ * Version: 1.3.1
  * Requires at least: 6.0
  * Requires PHP: 8.0
  * Requires Plugins: bmlt-minutes
@@ -11,7 +11,7 @@
  * License: GPL-2.0-or-later
  * Text Domain: bmlt-minutes-archive-importer
  *
- * @version 1.3.0
+ * @version 1.3.1
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 final class BMLT_Minutes_Archive_Importer {
-    public const VERSION = '1.3.0';
+    public const VERSION = '1.3.1';
     private const OPTION  = 'bmai_meta_mapping';
     private const BULK_RESULT_PREFIX = 'bmai_bulk_result_';
     private const NOTICE_PREFIX = 'bmai_notice_';

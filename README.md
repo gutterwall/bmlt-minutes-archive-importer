@@ -28,8 +28,8 @@ get drafts, and uploading needs the upload permission.
 Each release is built by CI from the tagged commit, and the zip carries a GitHub build provenance attestation:
 
 ```sh
-gh attestation verify bmlt-minutes-archive-importer-1.3.0.zip --repo gutterwall/bmlt-minutes-archive-importer
-sha256sum -c bmlt-minutes-archive-importer-1.3.0.zip.sha256
+gh attestation verify bmlt-minutes-archive-importer-1.3.1.zip --repo gutterwall/bmlt-minutes-archive-importer
+sha256sum -c bmlt-minutes-archive-importer-1.3.1.zip.sha256
 ```
 
 ## Tests

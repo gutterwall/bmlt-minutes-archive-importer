@@ -5,7 +5,7 @@ Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 8.0
 Requires Plugins: bmlt-minutes
-Stable tag: 1.3.0
+Stable tag: 1.3.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -75,6 +75,10 @@ If your BMLT Minutes installation uses nonstandard meta keys, open Compatibility
 On multisite, the network's allowed upload types also apply. Networks created before WordPress 6.6 do not allow TXT, RTF or CSV files unless a network administrator adds `txt rtf csv` under Network Admin > Settings > Upload file types; until then those imports fail with "Sorry, you are not allowed to upload this file type."
 
 == Changelog ==
+
+= 1.3.1 =
+* Documented: on multisite networks created before WordPress 6.6, TXT, RTF and CSV imports need those types added
+  to the network's upload file types (see Notes). No code changes.
 
 = 1.3.0 =
 * Fixed: minutes for a date later than now (today's meeting imported in the morning, or later this year) were scheduled

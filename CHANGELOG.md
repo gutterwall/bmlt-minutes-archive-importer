@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.3.1 (2026-10-24)
+
+Documented
+- On multisite, the network's allowed upload types apply to imports. Networks created before WordPress 6.6 do not
+  allow TXT, RTF or CSV files (and keep that list after upgrading), so those imports fail with "Sorry, you are not
+  allowed to upload this file type." until a network administrator adds `txt rtf csv` under Network Admin > Settings >
+  Upload file types. The readme's Notes now say so.
+
+Tests
+- The integration tests set the network's upload types explicitly, and check that a type the network does not allow
+  is refused cleanly; they passed on a WordPress 6.0 network only by luck of its age before.
+- The end-to-end test works with nginx older than 1.19.5, and no longer races WordPress's login page script.
+
+No code changes: the plugin behaves exactly as 1.3.0.
+
 ## 1.3.0 (2026-10-22)
 
 Fixed

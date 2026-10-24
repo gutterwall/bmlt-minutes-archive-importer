@@ -3,7 +3,7 @@
  * Removes the importer's own settings (on every site of a network). Imported minutes and their documents belong to
  * BMLT Minutes and the Media Library, and are kept.
  *
- * @version 1.3.0
+ * @version 1.3.1
  */
 
 if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
