@@ -85,6 +85,16 @@ abstract class TestCase extends \WP_UnitTestCase {
 		$_POST = $_GET = $_REQUEST = $_FILES = array();
 		unset( $_SERVER['CONTENT_LENGTH'], $_SERVER['HTTP_REFERER'] );
 		wp_set_current_user( self::$admin );
+		if ( is_multisite() ) {
+			// The network's allowed upload types decide which documents import. Networks created before WordPress 6.6
+			// start with a narrower list (no txt, rtf or csv) and keep it after upgrading, so pin today's default (every
+			// type WordPress knows): the results then do not depend on the version the test network was installed with.
+			$exts = array();
+			foreach ( array_keys( wp_get_mime_types() ) as $group ) {
+				$exts = array_merge( $exts, explode( '|', $group ) );
+			}
+			update_site_option( 'upload_filetypes', implode( ' ', $exts ) );
+		}
 	}
 
 	public function tear_down() {

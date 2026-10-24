@@ -72,6 +72,8 @@ This plugin does not create a second minutes archive. It imports records into BM
 
 If your BMLT Minutes installation uses nonstandard meta keys, open Compatibility / advanced mapping on the Archive Import screen and select the appropriate meeting-date, file-ID, and external-URL meta keys.
 
+On multisite, the network's allowed upload types also apply. Networks created before WordPress 6.6 do not allow TXT, RTF or CSV files unless a network administrator adds `txt rtf csv` under Network Admin > Settings > Upload file types; until then those imports fail with "Sorry, you are not allowed to upload this file type."
+
 == Changelog ==
 
 = 1.3.0 =

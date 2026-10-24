@@ -170,6 +170,19 @@ class SingleImportTest extends TestCase {
 		$this->assertSame( array(), glob( $uploads['path'] . '/*' . pathinfo( $name, PATHINFO_FILENAME ) . '*' ) );
 	}
 
+	public function test_a_type_the_network_does_not_allow_is_refused() {
+		if ( ! is_multisite() ) {
+			$this->markTestSkipped( 'Multisite only.' );
+		}
+		// What networks created before WordPress 6.6 allow: no txt, rtf or csv.
+		update_site_option( 'upload_filetypes', 'jpg jpeg png gif mov avi mpg 3gp 3g2 midi mid pdf doc ppt odt pptx docx pps ppsx xls xlsx key mp3 ogg flac m4a wav mp4 m4v webm ogv flv' );
+		$notice = $this->notice( $this->import_single( array(), $this->upload( 'minutes.txt', 'minutes.txt' ) ) );
+		$this->assertSame( 'notice-error', $notice[0] );
+		$this->assertStringStartsWith( 'Upload failed: ', $notice[1] );
+		$this->assertSame( array(), $this->minutes(), 'no minutes record left behind' );
+		$this->assertSame( array(), get_posts( array( 'post_type' => 'attachment', 'post_status' => 'any' ) ) );
+	}
+
 	public function test_bmlt_minutes_upload_size_limit_applies() {
 		update_option( 'bmlt_minutes_max_upload_mb', 1 );
 		// The browser posts from the importer's page under Minutes.
